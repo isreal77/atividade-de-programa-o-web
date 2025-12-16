@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TaskList — Gerenciador de Tarefas (client-side)</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#98a0b3;--accent:#7c3aed;--success:#10b981}
+    *{box-sizing:border-box}body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; background:linear-gradient(180deg,#071028 0%, #071827 60%); color:#e6eef8; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
+    .app{width:100%; max-width:980px}
+    header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px}
+    h1{font-size:20px; margin:0}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:18px; border-radius:12px; box-shadow:0 6px 20px rgba(2,6,23,0.6)}
+    .auth{display:flex; gap:12px}
+    button{background:var(--accent); border:0; color:white; padding:8px 12px; border-radius:8px; cursor:pointer}
+    button.ghost{background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--muted)}
+    .grid{display:grid; grid-template-columns: 360px 1fr; gap:14px}
+
+    .left{display:flex; flex-direction:column; gap:12px}
+    .form input, .form select, .form textarea{width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit}
+    .small{font-size:13px; color:var(--muted)}
+
+    .controls{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+    .task{display:flex; gap:12px; align-items:center; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+    .task .title{font-weight:600}
+    .task .meta{font-size:13px; color:var(--muted)}
+    .task.done{opacity:0.6; text-decoration:line-through}
+    .list{display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow:auto; padding-right:6px}
+
+    .row{display:flex; gap:8px; align-items:center}
+    .muted{color:var(--muted)}
+
+    @media (max-width:880px){.grid{grid-template-columns:1fr}.left{order:2}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>TaskList — Gerenciador de Tarefas</h1>
+        <div class="small">Cadastro / login simples — dados salvos no seu navegador (localStorage).</div>
+      </div>
+      <div class="auth">
+        <div id="userBadge" class="small muted">Não conectado</div>
+        <button id="btnLogout" class="ghost" style="display:none">Sair</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <aside class="left card">
+        <div id="authArea">
+          <h3>Entrar / Cadastrar</h3>
+          <div class="small">Crie uma conta local ou entre. Senhas são “hashadas” (versão simples).</div>
+
+          <div style="margin-top:12px">
+            <input id="inpUsername" placeholder="Usuário (único)" />
+            <input id="inpEmail" placeholder="E-mail (opcional)" style="margin-top:8px" />
+            <input id="inpPassword" placeholder="Senha" type="password" style="margin-top:8px" />
+            <div style="display:flex; gap:8px; margin-top:10px">
+              <button id="btnRegister">Cadastrar</button>
+              <button id="btnLogin" class="ghost">Entrar</button>
+            </div>
+            <div id="authMsg" class="small muted" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <hr style="border:none; height:1px; background:rgba(255,255,255,0.02); margin:12px 0">
+
+        <div id="newTaskArea" style="display:none">
+          <h3>Nova Tarefa</h3>
+          <div class="small">Adicione uma tarefa para o usuário conectado.</div>
+          <div style="margin-top:10px" class="form">
+            <input id="taskTitle" placeholder="Título" />
+            <textarea id="taskNotes" placeholder="Notas (opcional)" rows="3" style="margin-top:8px"></textarea>
+            <div style="display:flex; gap:8px; margin-top:8px">
+              <select id="taskPriority">
+                <option value="low">Baixa</option>
+                <option value="medium" selected>Média</option>
+                <option value="high">Alta</option>
+              </select>
+              <input id="taskDue" type="date" />
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px">
+              <button id="btnAddTask">Adicionar</button>
+              <button id="btnClearTasks" class="ghost">Limpar todas</button>
+            </div>
+          </div>
+
+          <div style="margin-top:14px">
+            <button id="btnExport" class="ghost">Exportar JSON</button>
+            <button id="btnImport" class="ghost">Importar JSON</button>
+            <input id="fileImport" type="file" accept="application/json" style="display:none" />
+          </div>
+        </div>
+
+      </aside>
+
+      <main class="card">
+        <div class="controls">
+          <input id="search" placeholder="Pesquisar tarefas..." style="flex:1; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit" />
+          <select id="filter">
+            <option value="all">Todas</option>
+            <option value="active">Ativas</option>
+            <option value="done">Concluídas</option>
+            <option value="due">Com prazo</option>
+            <option value="high">Prioridade alta</option>
+          </select>
+        </div>
+
+        <div id="list" class="list"></div>
+
+        <div style="margin-top:12px" class="row muted">
+          <div id="stats">Nenhuma tarefa</div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Storage helpers ----------
+    const STORAGE_USERS = 'tasklist_users_v1';
+    const USERS = JSON.parse(localStorage.getItem(STORAGE_USERS) || '{}');
+
+    function saveUsers(){ localStorage.setItem(STORAGE_USERS, JSON.stringify(USERS)); }
+
+    function tasksKeyFor(user){ return `tasklist_tasks_${user}`; }
+    function loadTasks(user){ return JSON.parse(localStorage.getItem(tasksKeyFor(user)) || '[]'); }
+    function saveTasks(user, tasks){ localStorage.setItem(tasksKeyFor(user), JSON.stringify(tasks)); }
+
+    // ---------- Simple hash (compatible with file:///) ----------
+    async function sha256Hex(text){
+      let hash = 0;
+      for(let i=0;i<text.length;i++){
+        hash = (hash * 31 + text.charCodeAt(i)) | 0;
+      }
+      return Math.abs(hash).toString(16);
+    }
+
+    // ---------- UI elements ----------
+    const inpUsername = document.getElementById('inpUsername');
+    const inpEmail = document.getElementById('inpEmail');
+    const inpPassword = document.getElementById('inpPassword');
+    const btnRegister = document.getElementById('btnRegister');
+    const btnLogin = document.getElementById('btnLogin');
+    const authMsg = document.getElementById('authMsg');
+    const userBadge = document.getElementById('userBadge');
+    const btnLogout = document.getElementById('btnLogout');
+
+    const newTaskArea = document.getElementById('newTaskArea');
+    const taskTitle = document.getElementById('taskTitle');
+    const taskNotes = document.getElementById('taskNotes');
+    const taskPriority = document.getElementById('taskPriority');
+    const taskDue = document.getElementById('taskDue');
+    const btnAddTask = document.getElementById('btnAddTask');
+    const btnClearTasks = document.getElementById('btnClearTasks');
+    const listEl = document.getElementById('list');
+    const stats = document.getElementById('stats');
+    const search = document.getElementById('search');
+    const filter = document.getElementById('filter');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const fileImport = document.getElementById('fileImport');
+
+    let currentUser = sessionStorage.getItem('tasklist_current_user') || null;
+    let tasks = [];
+
+    function setAuthMsg(txt, isError){ authMsg.textContent = txt; authMsg.style.color = isError ? '#ffb4b4' : 'inherit'; }
+
+    // ---------- auth flow ----------
+    btnRegister.addEventListener('click', async ()=>{
+      const u = inpUsername.value.trim();
+      const p = inpPassword.value;
+      const e = inpEmail.value.trim();
+      if(!u || !p){ setAuthMsg('Informe usuário e senha', true); return; }
+      if(USERS[u]){ setAuthMsg('Usuário já existe', true); return; }
+      const hash = await sha256Hex(p);
+      USERS[u] = { email: e || '', passwordHash: hash, createdAt: new Date().toISOString() };
+      saveUsers();
+      setAuthMsg('Cadastro realizado! Agora entre.');
+      inpPassword.value = '';
+    });
+
+    btnLogin.addEventListener('click', async ()=>{
+      const u = inpUsername.value.trim();
+      const p = inpPassword.value;
+      if(!u || !p){ setAuthMsg('Informe usuário e senha', true); return; }
+      const user = USERS[u];
+      if(!user){ setAuthMsg('Usuário não encontrado', true); return; }
+      const hash = await sha256Hex(p);
+      if(hash !== user.passwordHash){ setAuthMsg('Senha incorreta', true); return; }
+      currentUser = u;
+      sessionStorage.setItem('tasklist_current_user', u);
+      setAuthMsg('');
+      refreshUIAfterLogin();
+    });
+
+    btnLogout.addEventListener('click', ()=>{
+      currentUser = null; sessionStorage.removeItem('tasklist_current_user'); refreshUIAfterLogin();
+    });
+
+    function refreshUIAfterLogin(){
+      if(currentUser){
+        userBadge.textContent = `Olá, ${currentUser}`;
+        btnLogout.style.display = 'inline-block';
+        newTaskArea.style.display = 'block';
+        document.getElementById('authArea').style.display = 'none';
+        tasks = loadTasks(currentUser);
+        renderTasks();
+      } else {
+        userBadge.textContent = 'Não conectado';
+        btnLogout.style.display = 'none';
+        newTaskArea.style.display = 'none';
+        document.getElementById('authArea').style.display = 'block';
+        tasks = []; renderTasks();
+      }
+    }
+
+    // ---------- tasks ----------
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+
+    btnAddTask.addEventListener('click', ()=>{
+      const title = taskTitle.value.trim();
+      if(!title){ alert('Título vazio'); return; }
+      const t = {
+        id: uid(),
+        title,
+        notes: taskNotes.value.trim(),
+        priority: taskPriority.value,
+        due: taskDue.value || null,
+        done: false,
+        createdAt: new Date().toISOString()
+      };
+      tasks.unshift(t);
+      saveTasks(currentUser, tasks);
+      taskTitle.value = ''; 
+      taskNotes.value = ''; 
+      taskDue.value = ''; 
+      taskPriority.value = 'medium';
+      renderTasks();
+    });
+
+    btnClearTasks.addEventListener('click', ()=>{
+      if(!confirm('Limpar todas as tarefas?')) return;
+      tasks = []; saveTasks(currentUser, tasks); renderTasks();
+    });
+
+    function toggleDone(id){
+      const t = tasks.find(x=>x.id===id); if(!t) return;
+      t.done = !t.done;
+      saveTasks(currentUser, tasks);
+      renderTasks();
+    }
+
+    function removeTask(id){
+      if(!confirm('Remover tarefa?')) return;
+      tasks = tasks.filter(x=>x.id!==id);
+      saveTasks(currentUser, tasks);
+      renderTasks();
+    }
+
+    function editTask(id){
+      const t = tasks.find(x=>x.id===id);
+      if(!t) return;
+      const newTitle = prompt('Editar título', t.title);
+      if(newTitle === null) return;
+      t.title = newTitle.trim() || t.title;
+      saveTasks(currentUser, tasks);
+      renderTasks();
+    }
+
+    function renderTasks(){
+      listEl.innerHTML = '';
+      const q = search.value.trim().toLowerCase();
+      const f = filter.value;
+
+      let shown = tasks.filter(t=>{
+        if(q){
+          const inTitle = t.title.toLowerCase().includes(q);
+          const inNotes = (t.notes || '').toLowerCase().includes(q);
+          if(!inTitle && !inNotes) return false;
+        }
+        if(f==='active' && t.done) return false;
+        if(f==='done' && !t.done) return false;
+        if(f==='due' && !t.due) return false;
+        if(f==='high' && t.priority!=='high') return false;
+        return true;
+      });
+
+      if(shown.length===0){
+        listEl.innerHTML = '<div class="small muted">Nenhuma tarefa encontrada</div>';
+      }
+
+      shown.forEach(t=>{
+        const div = document.createElement('div');
+        div.className = 'task' + (t.done ? ' done':'');
+        div.innerHTML = `
+          <input type="checkbox" ${t.done ? 'checked':''} />
+          <div style="flex:1">
+            <div class="title">${escapeHtml(t.title)}</div>
+            <div class="meta">
+              ${t.priority} • 
+              ${t.due ? ('prazo: '+t.due) : ''} 
+              ${t.notes ? '• '+escapeHtml(t.notes) : ''}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <button class="ghost" data-act="edit">Editar</button>
+            <button class="ghost" data-act="remove">Remover</button>
+          </div>
+        `;
+
+        div.querySelector('input[type=checkbox]').addEventListener('change', ()=> toggleDone(t.id));
+        div.querySelector('[data-act="remove"]').addEventListener('click', ()=> removeTask(t.id));
+        div.querySelector('[data-act="edit"]').addEventListener('click', ()=> editTask(t.id));
+
+        listEl.appendChild(div);
+      });
+
+      stats.textContent = `${tasks.length} tarefa(s) — ${tasks.filter(t=>t.done).length} concluída(s)`;
+    }
+
+    function escapeHtml(s){
+      return String(s)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;');
+    }
+
+    search.addEventListener('input', renderTasks);
+    filter.addEventListener('change', renderTasks);
+
+    btnExport.addEventListener('click', ()=>{
+      if(!currentUser) return alert('Entre para exportar.');
+      const data = { user: currentUser, tasks, exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); 
+      a.href = url; 
+      a.download = `tasklist_${currentUser}.json`; 
+      a.click(); 
+      URL.revokeObjectURL(url);
+    });
+
+    btnImport.addEventListener('click', ()=> fileImport.click());
+    
+    fileImport.addEventListener('change', ()=>{
+      const f = fileImport.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try{
+          const parsed = JSON.parse(reader.result);
+          if(!parsed.tasks) return alert('JSON inválido');
+          if(!confirm('Importar e MESCLAR com tarefas existentes?')) return;
+          tasks = parsed.tasks.concat(tasks);
+          saveTasks(currentUser, tasks);
+          renderTasks();
+        }catch(err){
+          alert('Erro ao importar: '+err.message);
+        }finally{
+          fileImport.value = '';
+        }
+      };
+      reader.readAsText(f);
+    });
+
+    refreshUIAfterLogin();
+  </script>
+</body>
+</html>
